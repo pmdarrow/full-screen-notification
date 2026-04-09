@@ -1,0 +1,16 @@
+# Copy this file to project.local.yml and fill in your values.
+# project.local.yml is gitignored and will not be committed.
+#
+# Google OAuth: Create an OAuth 2.0 Client ID (iOS/macOS type) at
+# https://console.cloud.google.com/apis/credentials
+#
+# The client ID looks like: 123456789-abcdef.apps.googleusercontent.com
+# The redirect scheme is:   com.googleusercontent.apps.123456789-abcdef
+
+targets:
+  FullScreenNotification:
+    settings:
+      base:
+        DEVELOPMENT_TEAM: YOUR_TEAM_ID
+        GOOGLE_CLIENT_ID: YOUR_CLIENT_ID.apps.googleusercontent.com
+        GOOGLE_REDIRECT_SCHEME: com.googleusercontent.apps.YOUR_CLIENT_ID
