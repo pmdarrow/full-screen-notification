@@ -90,12 +90,12 @@ final class AppState: ObservableObject {
             id: "sample-\(UUID().uuidString)",
             summary: "Hello, I'm a demo event",
             start: EventDateTime(
-                dateTime: Date().addingTimeInterval(49 * 60),
+                dateTime: Date().addingTimeInterval(60),
                 date: nil,
                 timeZone: nil
             ),
             end: EventDateTime(
-                dateTime: Date().addingTimeInterval(109 * 60),
+                dateTime: Date().addingTimeInterval(60 * 60),
                 date: nil,
                 timeZone: nil
             ),

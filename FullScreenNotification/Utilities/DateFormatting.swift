@@ -45,10 +45,12 @@ enum DateFormatting {
             return "The event will start in \(hours) hour\(hours == 1 ? "" : "s")"
         }
 
+        let seconds = totalSeconds % 60
+
         if minutes > 0 {
-            return "The event will start in \(minutes) minute\(minutes == 1 ? "" : "s")"
+            return "The event will start in \(minutes)m \(String(format: "%02d", seconds))s"
         }
 
-        return "The event will start in less than a minute"
+        return "The event will start in \(seconds)s"
     }
 }
