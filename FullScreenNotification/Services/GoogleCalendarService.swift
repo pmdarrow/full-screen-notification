@@ -9,7 +9,7 @@ final class GoogleCalendarService: @unchecked Sendable {
         self.oauthService = oauthService
     }
 
-    func fetchUpcomingEvents(withinMinutes minutes: Int) async throws -> [CalendarEvent] {
+    func fetchUpcomingEvents() async throws -> [CalendarEvent] {
         try await oauthService.refreshTokenIfNeeded()
 
         guard let accessToken = await oauthService.accessToken else {
@@ -17,33 +17,35 @@ final class GoogleCalendarService: @unchecked Sendable {
         }
 
         let now = Date()
-        let future = now.addingTimeInterval(TimeInterval(minutes * 60))
 
         return try await fetchEvents(
             calendarID: "primary",
             accessToken: accessToken,
-            timeMin: now,
-            timeMax: future
+            timeMin: now
         )
-        .filter { $0.status != "cancelled" }
+        .filter { event in
+            guard event.canTriggerAlert, let startDate = event.startDate else {
+                return false
+            }
+
+            return startDate > now
+        }
         .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
     }
 
     private func fetchEvents(
         calendarID: String,
         accessToken: String,
-        timeMin: Date,
-        timeMax: Date
+        timeMin: Date
     ) async throws -> [CalendarEvent] {
         let encodedID = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
 
         var components = URLComponents(string: "\(baseURL)/calendars/\(encodedID)/events")!
         components.queryItems = [
             URLQueryItem(name: "timeMin", value: ISO8601DateFormatter().string(from: timeMin)),
-            URLQueryItem(name: "timeMax", value: ISO8601DateFormatter().string(from: timeMax)),
             URLQueryItem(name: "singleEvents", value: "true"),
             URLQueryItem(name: "orderBy", value: "startTime"),
-            URLQueryItem(name: "maxResults", value: "10"),
+            URLQueryItem(name: "maxResults", value: "50"),
         ]
 
         var request = URLRequest(url: components.url!)

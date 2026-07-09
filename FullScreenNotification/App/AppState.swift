@@ -102,7 +102,9 @@ final class AppState: ObservableObject {
             hangoutLink: "https://meet.google.com/example",
             conferenceData: nil,
             htmlLink: nil,
-            status: "confirmed"
+            status: "confirmed",
+            description: nil,
+            location: nil
         )
         showNotification(for: sampleEvent)
     }

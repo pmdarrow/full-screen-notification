@@ -10,7 +10,7 @@ struct FullScreenNotificationApp: App {
             MenuBarView()
                 .environmentObject(appState)
         } label: {
-            Image(systemName: "calendar.badge.clock")
+            Image(systemName: "bell.badge.fill")
         }
         .menuBarExtraStyle(.menu)
     }

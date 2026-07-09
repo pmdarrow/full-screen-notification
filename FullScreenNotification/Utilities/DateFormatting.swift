@@ -13,12 +13,57 @@ enum DateFormatting {
         return f
     }()
 
+    private static let dateTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, h:mm a"
+        return f
+    }()
+
     static func formatTime(_ date: Date) -> String {
         clockFormatter.string(from: date)
     }
 
+    static func formatEventTime(_ date: Date) -> String {
+        timeFormatter.string(from: date)
+    }
+
+    static func formatEventDateTime(_ date: Date) -> String {
+        dateTimeFormatter.string(from: date)
+    }
+
     static func formatTimeRange(start: Date, end: Date) -> String {
         "\(timeFormatter.string(from: start)) \u{2013} \(timeFormatter.string(from: end))"
+    }
+
+    static func formatCompactRelativeTime(from now: Date, to target: Date) -> String {
+        let interval = target.timeIntervalSince(now)
+
+        if interval <= 0 {
+            return "Starting now"
+        }
+
+        let totalSeconds = Int(interval)
+        let days = totalSeconds / 86400
+        if days > 0 {
+            return "Starts in \(days)d"
+        }
+
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            if minutes > 0 {
+                return "Starts in \(hours)h \(minutes)m"
+            }
+
+            return "Starts in \(hours)h"
+        }
+
+        if minutes > 0 {
+            return "Starts in \(minutes)m"
+        }
+
+        return "Starts in \(totalSeconds)s"
     }
 
     static func formatRelativeTime(from now: Date, to target: Date) -> String {

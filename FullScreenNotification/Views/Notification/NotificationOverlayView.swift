@@ -10,7 +10,7 @@ struct NotificationOverlayView: View {
 
     var body: some View {
         ZStack {
-            GradientBackground()
+            TranslucentBlurBackground()
 
             VStack(spacing: 0) {
                 // Clock in top-right

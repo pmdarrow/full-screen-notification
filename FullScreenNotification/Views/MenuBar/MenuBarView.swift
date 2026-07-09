@@ -4,33 +4,27 @@ struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Group {
             statusSection
 
-            Divider()
+            if appState.isAuthenticated {
+                Divider()
 
-            upcomingSection
+                upcomingSection
 
-            Divider()
+                Divider()
 
-            alertSection
+                alertSection
+            }
 
             Divider()
 
             actionSection
-
-            Divider()
-
-            Button("Quit") {
-                NSApp.terminate(nil)
-            }
-            .keyboardShortcut("q", modifiers: .command)
         }
-        .padding(.vertical, 4)
     }
 
     private var alertSection: some View {
-        Picker("Alert Before", selection: $appState.minutesBefore) {
+        Picker("Alert before", selection: $appState.minutesBefore) {
             Text("1 minute").tag(1)
             Text("2 minutes").tag(2)
             Text("3 minutes").tag(3)
@@ -44,87 +38,91 @@ struct MenuBarView: View {
     }
 
     private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(appState.isAuthenticated ? "Google Calendar connected" : "Google Calendar not connected")
-                .font(.headline)
+        Group {
+            Label(
+                appState.isAuthenticated ? "Google Calendar connected" : "Google Calendar not connected",
+                systemImage: appState.isAuthenticated ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+            )
+            .labelStyle(.titleAndIcon)
 
             if let email = appState.oauthService.currentUserEmail, !email.isEmpty {
                 Text(email)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             if let authIssue = appState.authIssue {
                 Text(authIssue.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
             }
         }
     }
 
     @ViewBuilder
     private var upcomingSection: some View {
-        if appState.isAuthenticated {
-            if appState.upcomingEvents.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Upcoming")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        Text("Next Alert")
+            .foregroundStyle(.secondary)
 
-                    Text("No upcoming events")
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Upcoming")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    ForEach(appState.upcomingEvents.prefix(3)) { event in
-                        eventRow(event)
-                    }
-                }
-            }
-        } else {
-            Text("Connect to Google Calendar to see upcoming events.")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        if appState.upcomingEvents.isEmpty {
+            Text("No upcoming timed meetings.")
+        } else if let event = appState.upcomingEvents.first {
+            eventRow(event)
         }
     }
 
     private var actionSection: some View {
         Group {
             if appState.isAuthenticated {
-                Button("Disconnect from Google Calendar") {
+                Button("Show Sample Notification") {
+                    appState.showSampleNotification()
+                }
+
+                Button("Disconnect Calendar...") {
                     appState.signOut()
                 }
+
+                Divider()
             } else {
-                Button("Connect to Google Calendar") {
+                Button("Connect Google Calendar") {
                     appState.signIn()
                 }
+
+                Divider()
             }
 
-            Button("Show Sample Notification") {
-                appState.showSampleNotification()
+            Button("Quit Full Screen Notification") {
+                NSApp.terminate(nil)
             }
         }
     }
 
     private func eventRow(_ event: CalendarEvent) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        Group {
             Text(event.title)
-                .lineLimit(1)
 
-            Text(relativeTime(for: event))
-                .font(.caption)
+            Text("\(eventTimeText(for: event)) | \(relativeTime(for: event))")
                 .foregroundStyle(.secondary)
         }
     }
 
     private func relativeTime(for event: CalendarEvent) -> String {
         guard let start = event.startDate else { return "" }
-        return DateFormatting.formatRelativeTime(from: Date(), to: start)
+        return DateFormatting.formatCompactRelativeTime(from: Date(), to: start)
+    }
+
+    private func eventTimeText(for event: CalendarEvent) -> String {
+        guard let start = event.startDate else { return "Timed event" }
+        let startsToday = Calendar.current.isDateInToday(start)
+
+        if let end = event.endDate {
+            if startsToday {
+                return DateFormatting.formatTimeRange(start: start, end: end)
+            }
+
+            return DateFormatting.formatEventDateTime(start)
+        }
+
+        if startsToday {
+            return DateFormatting.formatEventTime(start)
+        }
+
+        return DateFormatting.formatEventDateTime(start)
     }
 }

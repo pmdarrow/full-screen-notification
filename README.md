@@ -1,4 +1,4 @@
-# FullScreenNotification
+# Full Screen Notification
 
 A macOS menu bar app that monitors your Google Calendar and displays full-screen notifications for upcoming events.
 
@@ -60,7 +60,7 @@ xcodegen
 xcodebuild -project FullScreenNotification.xcodeproj -scheme FullScreenNotification build
 
 # Run
-open ~/Library/Developer/Xcode/DerivedData/FullScreenNotification-*/Build/Products/Debug/FullScreenNotification.app
+open ~/Library/Developer/Xcode/DerivedData/FullScreenNotification-*/Build/Products/Debug/Full\ Screen\ Notification.app
 
 # Or open in Xcode and hit Cmd+R
 open FullScreenNotification.xcodeproj
