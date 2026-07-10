@@ -1,35 +1,51 @@
 import AppKit
+@preconcurrency import AppAuth
 import Foundation
-@preconcurrency import GoogleSignIn
 
 @MainActor
 final class GoogleOAuthService {
-    private(set) var isAuthenticated = false
+    private static let authorizationEndpoint = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
+    private static let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
+    private static let storedEmailKey = "googleOAuthEmail"
+
+    private let credentialStore = OAuthCredentialStore()
+    private var authState: OIDAuthState?
+    private var redirectHTTPHandler: OIDRedirectHTTPHandler?
     private var presentationWindow: NSWindow?
 
+    private(set) var isAuthenticated = false
+    private(set) var currentUserEmail: String?
+
     init() {
-        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: Constants.googleClientID)
-        isAuthenticated = GIDSignIn.sharedInstance.currentUser != nil
+        currentUserEmail = UserDefaults.standard.string(forKey: Self.storedEmailKey)
     }
 
     var accessToken: String? {
-        GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString
-    }
-
-    var currentUserEmail: String? {
-        GIDSignIn.sharedInstance.currentUser?.profile?.email
+        authState?.lastTokenResponse?.accessToken
     }
 
     var hasCalendarAccess: Bool {
-        hasCalendarScope(for: GIDSignIn.sharedInstance.currentUser)
+        guard let scope = authState?.scope else { return false }
+        return scope
+            .split(whereSeparator: \.isWhitespace)
+            .contains(Substring(Constants.googleCalendarReadonlyScope))
     }
 
     func restorePreviousSignIn() async {
         do {
-            let user = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
-            isAuthenticated = hasCalendarScope(for: user)
+            guard let restoredState = try credentialStore.load() else {
+                clearSession()
+                return
+            }
+
+            authState = restoredState
+            if currentUserEmail == nil {
+                currentUserEmail = emailAddress(from: restoredState)
+            }
+            isAuthenticated = restoredState.isAuthorized && hasCalendarAccess
         } catch {
-            isAuthenticated = false
+            print("Could not restore Google OAuth session: \(error.localizedDescription)")
+            clearSession()
         }
     }
 
@@ -42,49 +58,143 @@ final class GoogleOAuthService {
         }
 
         defer {
+            stopRedirectListener()
             if createdPresentationWindow, presentationWindow === window {
                 window.close()
                 presentationWindow = nil
             }
         }
 
-        let user: GIDGoogleUser
-        if let currentUser = GIDSignIn.sharedInstance.currentUser, !hasCalendarScope(for: currentUser) {
-            user = try await addCalendarScope(to: currentUser, presentingWindow: window)
-        } else {
-            let result = try await GIDSignIn.sharedInstance.signIn(
-                withPresenting: window,
-                hint: currentUserEmail,
-                additionalScopes: [Constants.googleCalendarReadonlyScope]
+        let handler = OIDRedirectHTTPHandler(successURL: nil)
+        var listenerError: NSError?
+        let redirectURL = handler.startHTTPListener(&listenerError)
+        if let listenerError {
+            throw OAuthError.sdkError(
+                message: listenerError.localizedDescription
             )
-            user = result.user
         }
 
-        guard hasCalendarScope(for: user) else {
+        redirectHTTPHandler = handler
+
+        let configuration = OIDServiceConfiguration(
+            authorizationEndpoint: Self.authorizationEndpoint,
+            tokenEndpoint: Self.tokenEndpoint
+        )
+        let request = OIDAuthorizationRequest(
+            configuration: configuration,
+            clientId: Constants.googleClientID,
+            clientSecret: nil,
+            scopes: [OIDScopeOpenID, OIDScopeEmail, Constants.googleCalendarReadonlyScope],
+            redirectURL: redirectURL,
+            responseType: OIDResponseTypeCode,
+            additionalParameters: ["access_type": "offline"]
+        )
+
+        let signedInState: OIDAuthState = try await withCheckedThrowingContinuation { continuation in
+            let flow = OIDAuthState.authState(
+                byPresenting: request,
+                presenting: window
+            ) { state, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let state else {
+                    continuation.resume(
+                        throwing: OAuthError.sdkError(message: "Google returned no authorization session.")
+                    )
+                    return
+                }
+
+                continuation.resume(returning: state)
+            }
+            handler.currentAuthorizationFlow = flow
+        }
+
+        authState = signedInState
+        currentUserEmail = emailAddress(from: signedInState)
+
+        guard hasCalendarAccess else {
             isAuthenticated = false
             throw OAuthError.calendarPermissionNotGranted
         }
 
+        do {
+            try credentialStore.save(signedInState)
+        } catch {
+            clearSession()
+            throw OAuthError.sdkError(message: "The Google session couldn't be saved in Keychain: \(error.localizedDescription)")
+        }
+
+        UserDefaults.standard.set(currentUserEmail, forKey: Self.storedEmailKey)
         isAuthenticated = true
     }
 
     func refreshTokenIfNeeded() async throws {
-        guard let user = GIDSignIn.sharedInstance.currentUser else {
+        guard let authState else {
             throw OAuthError.notAuthenticated
         }
-
-        let refreshedUser = try await user.refreshTokensIfNeeded()
-        guard hasCalendarScope(for: refreshedUser) else {
+        guard hasCalendarAccess else {
             isAuthenticated = false
             throw OAuthError.calendarPermissionNotGranted
         }
 
-        isAuthenticated = true
+        let token: String = try await withCheckedThrowingContinuation { continuation in
+            authState.performAction { accessToken, _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let accessToken else {
+                    continuation.resume(throwing: OAuthError.notAuthenticated)
+                    return
+                }
+
+                continuation.resume(returning: accessToken)
+            }
+        }
+
+        guard !token.isEmpty else {
+            throw OAuthError.notAuthenticated
+        }
+
+        do {
+            try credentialStore.save(authState)
+        } catch {
+            throw OAuthError.sdkError(message: "The refreshed Google session couldn't be saved: \(error.localizedDescription)")
+        }
+
+        isAuthenticated = authState.isAuthorized
     }
 
     func signOut() {
-        GIDSignIn.sharedInstance.signOut()
+        stopRedirectListener()
+        clearSession()
+    }
+
+    private func stopRedirectListener() {
+        redirectHTTPHandler?.currentAuthorizationFlow = nil
+        redirectHTTPHandler?.cancelHTTPListener()
+        redirectHTTPHandler = nil
+    }
+
+    private func clearSession() {
+        try? credentialStore.delete()
+        authState = nil
         isAuthenticated = false
+        currentUserEmail = nil
+        UserDefaults.standard.removeObject(forKey: Self.storedEmailKey)
+    }
+
+    private func emailAddress(from authState: OIDAuthState) -> String? {
+        guard let idTokenString = authState.lastTokenResponse?.idToken,
+              let idToken = OIDIDToken(idTokenString: idTokenString) else {
+            return nil
+        }
+
+        return idToken.claims["email"] as? String
     }
 
     private func makePresentationWindow() -> NSWindow {
@@ -102,31 +212,6 @@ final class GoogleOAuthService {
         window.makeKeyAndOrderFront(nil)
         return window
     }
-
-    private func hasCalendarScope(for user: GIDGoogleUser?) -> Bool {
-        user?.grantedScopes?.contains(Constants.googleCalendarReadonlyScope) == true
-    }
-
-    private func addCalendarScope(
-        to user: GIDGoogleUser,
-        presentingWindow: NSWindow
-    ) async throws -> GIDGoogleUser {
-        try await withCheckedThrowingContinuation { continuation in
-            user.addScopes([Constants.googleCalendarReadonlyScope], presenting: presentingWindow) { result, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                guard let result else {
-                    continuation.resume(throwing: OAuthError.calendarPermissionNotGranted)
-                    return
-                }
-
-                continuation.resume(returning: result.user)
-            }
-        }
-    }
 }
 
 enum OAuthError: LocalizedError {
@@ -136,8 +221,15 @@ enum OAuthError: LocalizedError {
     case sdkError(message: String)
 
     init(from error: Error) {
+        if let oauthError = error as? OAuthError {
+            self = oauthError
+            return
+        }
+
         let nsError = error as NSError
-        if nsError.domain == kGIDSignInErrorDomain, nsError.code == -5 {
+        if nsError.domain == OIDGeneralErrorDomain &&
+            (nsError.code == OIDErrorCode.userCanceledAuthorizationFlow.rawValue ||
+             nsError.code == OIDErrorCode.programCanceledAuthorizationFlow.rawValue) {
             self = .canceled
         } else {
             self = .sdkError(message: nsError.localizedDescription)

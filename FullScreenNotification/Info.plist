@@ -22,22 +22,9 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
-    <key>GIDClientID</key>
+    <key>GoogleOAuthClientID</key>
     <string>$(GOOGLE_CLIENT_ID)</string>
-    <key>GIDRedirectScheme</key>
-    <string>$(GOOGLE_REDIRECT_SCHEME)</string>
     <key>LSUIElement</key>
     <true/>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>OAuth Callback</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>$(GOOGLE_REDIRECT_SCHEME)</string>
-            </array>
-        </dict>
-    </array>
 </dict>
 </plist>

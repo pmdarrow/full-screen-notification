@@ -3,6 +3,8 @@
 *.xcworkspace/xcuserdata/
 xcuserdata/
 DerivedData/
+build-release/
+dist/
 *.xccheckout
 *.moved-aside
 *.hmap

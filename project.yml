@@ -9,9 +9,9 @@ options:
   xcodeVersion: "16.0"
 
 packages:
-  GoogleSignIn:
-    url: https://github.com/google/GoogleSignIn-iOS
-    from: 9.1.0
+  AppAuth:
+    url: https://github.com/openid/AppAuth-iOS
+    from: 2.0.0
 
 targets:
   FullScreenNotification:
@@ -38,4 +38,4 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         SWIFT_STRICT_CONCURRENCY: complete
     dependencies:
-      - package: GoogleSignIn
+      - package: AppAuth
