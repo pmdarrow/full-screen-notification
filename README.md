@@ -58,9 +58,12 @@ attribute so it can run on macOS.
 4. Note your client ID — it looks like `123456789-abcdef.apps.googleusercontent.com`
 
 The app uses AppAuth's authorization-code flow with PKCE and a temporary loopback
-callback on `127.0.0.1`. A client secret and custom URL scheme are not required.
-It requests the `calendar.readonly` scope, so it can read events but cannot
-create, edit, or delete them.
+callback on `127.0.0.1`. Google's Desktop OAuth token exchange also requires the
+client secret issued with the client ID. Desktop apps cannot keep that value
+confidential, so it is stored only in the ignored local build configuration and
+embedded in release builds. A custom URL scheme is not required. The app
+requests the `calendar.readonly` scope, so it can read events but cannot create,
+edit, or delete them.
 
 ### Building
 
@@ -82,6 +85,7 @@ targets:
       base:
         DEVELOPMENT_TEAM: YOUR_TEAM_ID
         GOOGLE_CLIENT_ID: YOUR_CLIENT_ID.apps.googleusercontent.com
+        GOOGLE_CLIENT_SECRET: YOUR_CLIENT_SECRET
 ```
 
 Then generate the Xcode project and build:

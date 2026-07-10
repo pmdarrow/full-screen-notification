@@ -12,3 +12,4 @@ targets:
       base:
         DEVELOPMENT_TEAM: YOUR_TEAM_ID
         GOOGLE_CLIENT_ID: YOUR_CLIENT_ID.apps.googleusercontent.com
+        GOOGLE_CLIENT_SECRET: YOUR_CLIENT_SECRET

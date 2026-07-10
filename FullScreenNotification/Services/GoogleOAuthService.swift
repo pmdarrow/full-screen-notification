@@ -83,7 +83,7 @@ final class GoogleOAuthService {
         let request = OIDAuthorizationRequest(
             configuration: configuration,
             clientId: Constants.googleClientID,
-            clientSecret: nil,
+            clientSecret: Constants.googleClientSecret,
             scopes: [OIDScopeOpenID, OIDScopeEmail, Constants.googleCalendarReadonlyScope],
             redirectURL: redirectURL,
             responseType: OIDResponseTypeCode,
