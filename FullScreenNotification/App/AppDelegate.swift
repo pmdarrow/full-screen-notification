@@ -19,7 +19,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func registerForLaunchAtLogin() {
         let service = SMAppService.mainApp
 
-        guard service.status == .notRegistered else { return }
+        switch service.status {
+        case .notRegistered, .notFound:
+            break
+        case .enabled, .requiresApproval:
+            return
+        @unknown default:
+            return
+        }
 
         do {
             try service.register()
