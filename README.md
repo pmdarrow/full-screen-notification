@@ -14,6 +14,7 @@ A macOS menu bar app that monitors timed events on your primary Google Calendar 
 - **Video call quick-join** — detects links for Google Meet, Zoom, Microsoft Teams, Webex, and other common providers
 - **Focused monitoring** — skips all-day and cancelled events
 - **Native menu bar UI** — shows the next timed event and runs without a Dock icon
+- **Starts automatically** — registers itself to launch when you log in
 
 ## Install
 
@@ -34,7 +35,8 @@ Applications folder:
 
 Because this is a system-wide install, macOS will ask for an administrator
 password. The installer launches the app when it finishes; look for the bell in
-the menu bar.
+the menu bar. On its first launch, the app adds itself to **System Settings →
+General → Login Items** so it starts automatically on subsequent logins.
 
 The app is ad-hoc signed, but it is not signed with an Apple Developer ID or
 notarized as I'm not really interested in paying to be a part of the Apple
