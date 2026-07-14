@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class NotificationWindowController {
+final class NotificationWindowController: NSObject {
     private var window: NSWindow?
     private var escapeMonitor: Any?
 
@@ -23,7 +23,8 @@ final class NotificationWindowController {
         )
 
         let hostingView = NSHostingView(rootView: overlayView)
-        hostingView.frame = screen.frame
+        hostingView.frame = NSRect(origin: .zero, size: screen.frame.size)
+        hostingView.autoresizingMask = [.width, .height]
 
         let window = OverlayWindow(
             contentRect: screen.frame,
@@ -56,6 +57,12 @@ final class NotificationWindowController {
         }
 
         self.window = window
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
@@ -64,6 +71,12 @@ final class NotificationWindowController {
     }
 
     func dismiss() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+
         if let monitor = escapeMonitor {
             NSEvent.removeMonitor(monitor)
             escapeMonitor = nil
@@ -79,6 +92,15 @@ final class NotificationWindowController {
         }, completionHandler: {
             windowRef.orderOut(nil)
         })
+    }
+
+    @objc private func screenParametersDidChange(_ notification: Notification) {
+        guard let window,
+              let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first else {
+            return
+        }
+
+        window.setFrame(screen.frame, display: true)
     }
 }
 
