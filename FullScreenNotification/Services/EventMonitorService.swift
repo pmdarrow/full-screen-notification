@@ -10,17 +10,20 @@ final class EventMonitorService {
     private var calendarService: GoogleCalendarService?
     private var minutesBefore: Int = 5
     private var onEventsUpdated: (([CalendarEvent]) -> Void)?
+    private var onFetchFailed: ((Error) -> Void)?
 
     func start(
         calendarService: GoogleCalendarService,
         minutesBefore: Int,
-        onEventsUpdated: @escaping ([CalendarEvent]) -> Void
+        onEventsUpdated: @escaping ([CalendarEvent]) -> Void,
+        onFetchFailed: @escaping (Error) -> Void
     ) {
         stop()
 
         self.calendarService = calendarService
         self.minutesBefore = minutesBefore
         self.onEventsUpdated = onEventsUpdated
+        self.onFetchFailed = onFetchFailed
 
         // Fetch immediately on start
         Task { await fetchAndProcess() }
@@ -58,7 +61,11 @@ final class EventMonitorService {
                 events.contains { $0.id == id && ($0.endDate ?? .distantPast) > now }
             }
         } catch {
-            print("Event monitor fetch failed: \(error)")
+            AppLogger.error(
+                "calendar.monitor",
+                "Event fetch failed \(AppLogger.errorSummary(error))"
+            )
+            onFetchFailed?(error)
         }
     }
 

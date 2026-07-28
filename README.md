@@ -55,7 +55,7 @@ attribute so it can run on macOS.
 ### Google OAuth credentials
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Configure the OAuth consent screen and add your Google account as a test user if the app is in testing mode
+2. Configure the OAuth consent screen, then set the app's publishing status to **In production**
 3. Create an **OAuth 2.0 Client ID** and choose **Desktop app** as the application type
 4. Note your client ID — it looks like `123456789-abcdef.apps.googleusercontent.com`
 
@@ -66,6 +66,22 @@ confidential, so it is stored only in the ignored local build configuration and
 embedded in release builds. A custom URL scheme is not required. The app
 requests the `calendar.readonly` scope, so it can read events but cannot create,
 edit, or delete them.
+
+Google limits refresh tokens for external OAuth apps in **Testing** to seven
+days when Calendar access is requested. Publishing the app removes that testing
+limit; the app can remain unverified for personal use.
+
+### Logs
+
+The app writes authentication, Keychain, and Calendar request diagnostics to:
+
+```text
+~/Library/Logs/Full Screen Notification/full-screen-notification.log
+```
+
+The log contains token-presence flags, but the app does not intentionally log
+token values or account email addresses. It rotates at 2 MB and retains one
+previous file alongside the current log.
 
 ### Building
 

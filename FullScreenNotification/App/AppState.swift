@@ -55,7 +55,10 @@ final class AppState: ObservableObject {
                     authIssue = nil
                 } else {
                     authIssue = AppIssue.from(oauthError)
-                    print("Google Sign-In failed: \(oauthError.localizedDescription)")
+                    AppLogger.error(
+                        "oauth.signin",
+                        "Sign-in did not complete \(AppLogger.errorSummary(oauthError))"
+                    )
                 }
             }
         }
@@ -72,12 +75,19 @@ final class AppState: ObservableObject {
     func startMonitoring() {
         eventMonitor.start(
             calendarService: calendarService,
-            minutesBefore: minutesBefore
-        ) { [weak self] events in
-            Task { @MainActor in
-                self?.upcomingEvents = events
+            minutesBefore: minutesBefore,
+            onEventsUpdated: { [weak self] events in
+                Task { @MainActor in
+                    self?.upcomingEvents = events
+                    self?.authIssue = nil
+                }
+            },
+            onFetchFailed: { [weak self] error in
+                Task { @MainActor in
+                    self?.handleEventMonitorFailure(error)
+                }
             }
-        }
+        )
     }
 
     func refreshMonitoring() {
@@ -113,6 +123,38 @@ final class AppState: ObservableObject {
         notificationController.show(for: event) { [weak self] in
             self?.notificationController.dismiss()
         }
+    }
+
+    private func handleEventMonitorFailure(_ error: Error) {
+        upcomingEvents = []
+        authIssue = AppIssue.from(error)
+
+        guard requiresReauthentication(after: error) else {
+            return
+        }
+
+        oauthService.signOut(
+            reason: "event monitor requires reauthentication \(AppLogger.errorSummary(error))"
+        )
+        isAuthenticated = false
+        eventMonitor.stop()
+    }
+
+    private func requiresReauthentication(after error: Error) -> Bool {
+        if let oauthError = error as? OAuthError {
+            switch oauthError {
+            case .notAuthenticated, .calendarPermissionNotGranted, .offlineAccessNotGranted, .sessionExpired:
+                return true
+            case .canceled, .sdkError:
+                return false
+            }
+        }
+
+        if case .unauthorized = error as? CalendarServiceError {
+            return true
+        }
+
+        return false
     }
 
     private func syncAuthenticationState(forceReload: Bool = false) {
@@ -181,6 +223,18 @@ struct AppIssue {
                 title: "Calendar Access Not Granted",
                 message: "Sign in again and keep Google Calendar enabled.",
                 detail: nil
+            )
+        case .offlineAccessNotGranted:
+            return AppIssue(
+                title: "Calendar Connection Incomplete",
+                message: "Connect Google Calendar again so the app can keep alerts running.",
+                detail: nil
+            )
+        case .sessionExpired(let message):
+            return AppIssue(
+                title: "Calendar Connection Expired",
+                message: "Your Google Calendar connection expired. Connect again to resume alerts.",
+                detail: message
             )
         case .sdkError(let message):
             return AppIssue(

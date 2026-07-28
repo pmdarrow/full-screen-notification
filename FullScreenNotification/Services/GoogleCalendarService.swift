@@ -84,12 +84,16 @@ final class GoogleCalendarService: @unchecked Sendable {
 
     private func validateGoogleResponse(data: Data, response: URLResponse, context: String) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
+            AppLogger.error("calendar.api", "Received a non-HTTP response while fetching \(context)")
             throw CalendarServiceError.fetchFailed
         }
 
         guard httpResponse.statusCode == 200 else {
             let message = parseErrorMessage(from: data)
-            print("Google Calendar \(context) failed (\(httpResponse.statusCode)): \(message)")
+            AppLogger.error(
+                "calendar.api",
+                "Request failed context=\(context) status=\(httpResponse.statusCode) response=\(message)"
+            )
 
             switch httpResponse.statusCode {
             case 401:
