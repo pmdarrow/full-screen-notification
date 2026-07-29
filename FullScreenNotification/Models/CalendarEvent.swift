@@ -8,6 +8,7 @@ struct CalendarEvent: Codable, Identifiable, Hashable {
     let hangoutLink: String?
     let conferenceData: ConferenceData?
     let htmlLink: String?
+    let attendees: [EventAttendee]?
     let status: String?
     let description: String?
     let location: String?
@@ -43,8 +44,14 @@ struct CalendarEvent: Codable, Identifiable, Hashable {
         start.date != nil && start.dateTime == nil
     }
 
+    var isDeclinedByCurrentUser: Bool {
+        attendees?.contains { attendee in
+            attendee.isSelf == true && attendee.responseStatus == "declined"
+        } == true
+    }
+
     var canTriggerAlert: Bool {
-        status != "cancelled" && startDate != nil && !isAllDay
+        status != "cancelled" && !isDeclinedByCurrentUser && startDate != nil && !isAllDay
     }
 
     func hash(into hasher: inout Hasher) {
@@ -66,6 +73,16 @@ struct EventDateTime: Codable {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: date)
+    }
+}
+
+struct EventAttendee: Codable {
+    let isSelf: Bool?
+    let responseStatus: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isSelf = "self"
+        case responseStatus
     }
 }
 

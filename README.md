@@ -12,7 +12,7 @@ A macOS menu bar app that monitors timed events on your primary Google Calendar 
 - **Accurate timing** — schedules each known alert locally for its exact trigger time
 - **Configurable timing** — trigger notifications 1, 2, 3, 5, 10, or 15 minutes before events
 - **Video call quick-join** — detects links for Google Meet, Zoom, Microsoft Teams, Webex, and other common providers
-- **Focused monitoring** — skips all-day and cancelled events
+- **Focused monitoring** — skips all-day, cancelled, and declined events
 - **Native menu bar UI** — shows the next timed event and runs without a Dock icon
 - **Starts automatically** — registers itself to launch when you log in
 
