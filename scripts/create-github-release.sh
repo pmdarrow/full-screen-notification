@@ -129,6 +129,12 @@ xcodebuild \
 
 [[ -d "${app_src}" ]] || die "built app was not found at ${app_src}."
 
+built_oauth_client_secret="$(
+  /usr/libexec/PlistBuddy -c 'Print :GoogleOAuthClientSecret' "${app_src}/Contents/Info.plist" 2>/dev/null || true
+)"
+[[ -n "${built_oauth_client_secret}" ]] || die "release app is missing the Google Desktop OAuth client secret."
+[[ "${built_oauth_client_secret}" != *'$('* ]] || die "release app has an unresolved Google Desktop OAuth client secret."
+
 rm -rf "${stage_dir}" "${zip_path}"
 mkdir -p "${stage_dir}"
 ditto --noqtn "${app_src}" "${app_stage}"

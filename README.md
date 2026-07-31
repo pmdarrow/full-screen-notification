@@ -60,9 +60,11 @@ attribute so it can run on macOS.
 4. Note your client ID — it looks like `123456789-abcdef.apps.googleusercontent.com`
 
 The app uses AppAuth's authorization-code flow with PKCE and a temporary loopback
-callback on `127.0.0.1`. Google treats the client secret as optional for Desktop
-OAuth clients, so release builds include only the client ID. A custom URL scheme
-is not required. The app requests the `calendar.readonly` scope, so it can read
+callback on `127.0.0.1`. Include the client secret generated with the Desktop
+OAuth client because Google's token endpoint requires it for this client. Desktop
+apps cannot keep that value confidential, so it is stored only in the ignored
+local build configuration and embedded in release builds. A custom URL scheme is
+not required. The app requests the `calendar.readonly` scope, so it can read
 events but cannot create, edit, or delete them.
 
 Google limits refresh tokens for external OAuth apps in **Testing** to seven
@@ -101,6 +103,7 @@ targets:
       base:
         DEVELOPMENT_TEAM: YOUR_TEAM_ID
         GOOGLE_CLIENT_ID: YOUR_CLIENT_ID.apps.googleusercontent.com
+        GOOGLE_CLIENT_SECRET: YOUR_CLIENT_SECRET
 ```
 
 Then generate the Xcode project and build:

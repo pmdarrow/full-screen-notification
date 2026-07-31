@@ -24,6 +24,8 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>GoogleOAuthClientID</key>
     <string>$(GOOGLE_CLIENT_ID)</string>
+    <key>GoogleOAuthClientSecret</key>
+    <string>$(GOOGLE_CLIENT_SECRET)</string>
     <key>LSUIElement</key>
     <true/>
 </dict>

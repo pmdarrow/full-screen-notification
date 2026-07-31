@@ -4,6 +4,15 @@ import XCTest
 
 @MainActor
 final class GoogleOAuthServiceTests: XCTestCase {
+    func testAuthorizationRequestIncludesConfiguredDesktopClientSecret() {
+        let request = GoogleOAuthService.makeAuthorizationRequest(
+            redirectURL: URL(string: "http://127.0.0.1:49152/callback")!
+        )
+
+        XCTAssertEqual(request.clientSecret, Constants.googleClientSecret)
+        XCTAssertFalse(request.clientSecret?.isEmpty ?? true)
+    }
+
     func testInvalidGrantMeansGoogleRejectedRefreshToken() {
         let error = oauthTokenError(code: "invalid_grant")
 

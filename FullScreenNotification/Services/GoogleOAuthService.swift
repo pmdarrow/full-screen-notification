@@ -114,24 +114,7 @@ final class GoogleOAuthService: OAuthAccessTokenProviding {
 
         redirectHTTPHandler = handler
 
-        let configuration = OIDServiceConfiguration(
-            authorizationEndpoint: Self.authorizationEndpoint,
-            tokenEndpoint: Self.tokenEndpoint
-        )
-        let request = OIDAuthorizationRequest(
-            configuration: configuration,
-            clientId: Constants.googleClientID,
-            clientSecret: nil,
-            scopes: [OIDScopeOpenID, OIDScopeEmail, Constants.googleCalendarReadonlyScope],
-            redirectURL: redirectURL,
-            responseType: OIDResponseTypeCode,
-            additionalParameters: [
-                "access_type": "offline",
-                // Google normally issues a refresh token only on the first grant.
-                // Force consent so reconnecting replaces a missing or invalid token.
-                "prompt": "consent",
-            ]
-        )
+        let request = Self.makeAuthorizationRequest(redirectURL: redirectURL)
 
         let signedInState: OIDAuthState
         do {
@@ -339,6 +322,27 @@ final class GoogleOAuthService: OAuthAccessTokenProviding {
         }
 
         return response[OIDOAuthErrorFieldError] as? String == "invalid_grant"
+    }
+
+    static func makeAuthorizationRequest(redirectURL: URL) -> OIDAuthorizationRequest {
+        let configuration = OIDServiceConfiguration(
+            authorizationEndpoint: authorizationEndpoint,
+            tokenEndpoint: tokenEndpoint
+        )
+        return OIDAuthorizationRequest(
+            configuration: configuration,
+            clientId: Constants.googleClientID,
+            clientSecret: Constants.googleClientSecret,
+            scopes: [OIDScopeOpenID, OIDScopeEmail, Constants.googleCalendarReadonlyScope],
+            redirectURL: redirectURL,
+            responseType: OIDResponseTypeCode,
+            additionalParameters: [
+                "access_type": "offline",
+                // Google normally issues a refresh token only on the first grant.
+                // Force consent so reconnecting replaces a missing or invalid token.
+                "prompt": "consent",
+            ]
+        )
     }
 
     private func oauthErrorDetails(_ error: Error) -> String {
