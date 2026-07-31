@@ -2,8 +2,18 @@ import AppKit
 @preconcurrency import AppAuth
 import Foundation
 
+struct OAuthAccessToken: Sendable, Equatable {
+    let value: String
+    let expirationDate: Date?
+}
+
 @MainActor
-final class GoogleOAuthService {
+protocol OAuthAccessTokenProviding: AnyObject {
+    func freshAccessToken(forceRefresh: Bool) async throws -> OAuthAccessToken
+}
+
+@MainActor
+final class GoogleOAuthService: OAuthAccessTokenProviding {
     private static let authorizationEndpoint = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     private static let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
     private static let storedEmailKey = "googleOAuthEmail"
@@ -187,7 +197,7 @@ final class GoogleOAuthService {
         AppLogger.info("oauth.signin", "Google Calendar connection established")
     }
 
-    func refreshTokenIfNeeded() async throws {
+    func freshAccessToken(forceRefresh: Bool = false) async throws -> OAuthAccessToken {
         guard let authState else {
             AppLogger.error("oauth.refresh", "Refresh requested without an OAuth session")
             throw OAuthError.notAuthenticated
@@ -210,6 +220,15 @@ final class GoogleOAuthService {
         }
 
         let previousAccessToken = authState.lastTokenResponse?.accessToken
+        if forceRefresh {
+            AppLogger.info(
+                "oauth.refresh",
+                "Forcing access-token refresh after Google Calendar rejected the current token " +
+                    stateSummary(authState)
+            )
+            authState.setNeedsTokenRefresh()
+        }
+
         let token: String
         do {
             token = try await withCheckedThrowingContinuation { continuation in
@@ -231,12 +250,15 @@ final class GoogleOAuthService {
             let summary = AppLogger.errorSummary(error)
             AppLogger.error(
                 "oauth.refresh",
-                "Access-token refresh failed \(summary) \(stateSummary(authState))"
+                "Access-token refresh failed \(summary)\(oauthErrorDetails(error)) " +
+                    stateSummary(authState)
             )
 
-            if requiresReauthentication(after: error, authState: authState) {
+            if Self.refreshTokenWasRejected(error) {
                 let detail = (error as NSError).localizedDescription
-                clearSession(reason: "permanent access-token refresh failure \(summary)")
+                clearSession(
+                    reason: "Google rejected the refresh token \(summary)\(oauthErrorDetails(error))"
+                )
                 throw OAuthError.sessionExpired(message: detail)
             }
 
@@ -259,12 +281,24 @@ final class GoogleOAuthService {
         }
 
         isAuthenticated = authState.isAuthorized
-        if previousAccessToken != authState.lastTokenResponse?.accessToken {
+        if forceRefresh {
+            AppLogger.info(
+                "oauth.refresh",
+                "Forced access-token refresh completed " +
+                    "tokenChanged=\(previousAccessToken != authState.lastTokenResponse?.accessToken) " +
+                    stateSummary(authState)
+            )
+        } else if previousAccessToken != authState.lastTokenResponse?.accessToken {
             AppLogger.info(
                 "oauth.refresh",
                 "Access token refreshed and renewable OAuth session saved \(stateSummary(authState))"
             )
         }
+
+        return OAuthAccessToken(
+            value: token,
+            expirationDate: authState.lastTokenResponse?.accessTokenExpirationDate
+        )
     }
 
     func signOut(reason: String = "user disconnected Google Calendar") {
@@ -297,13 +331,30 @@ final class GoogleOAuthService {
         UserDefaults.standard.removeObject(forKey: Self.storedEmailKey)
     }
 
-    private func requiresReauthentication(after error: Error, authState: OIDAuthState) -> Bool {
+    static func refreshTokenWasRejected(_ error: Error) -> Bool {
         let nsError = error as NSError
+        guard nsError.domain == OIDOAuthTokenErrorDomain,
+              let response = nsError.userInfo[OIDOAuthErrorResponseErrorKey] as? [String: Any] else {
+            return false
+        }
 
-        return !authState.isAuthorized ||
-            nsError.domain == OIDOAuthTokenErrorDomain ||
-            (nsError.domain == OIDGeneralErrorDomain &&
-             nsError.code == OIDErrorCode.tokenRefreshError.rawValue)
+        return response[OIDOAuthErrorFieldError] as? String == "invalid_grant"
+    }
+
+    private func oauthErrorDetails(_ error: Error) -> String {
+        let nsError = error as NSError
+        guard let response = nsError.userInfo[OIDOAuthErrorResponseErrorKey] as? [String: Any] else {
+            return ""
+        }
+
+        let allowedFields = ["error", "error_description", "error_subtype"]
+        let details = allowedFields.compactMap { key -> String? in
+            guard let value = response[key] else { return nil }
+            return "\(key)=\(value)"
+        }
+
+        guard !details.isEmpty else { return "" }
+        return " oauthResponse={\(details.joined(separator: ", "))}"
     }
 
     private func emailAddress(from authState: OIDAuthState) -> String? {

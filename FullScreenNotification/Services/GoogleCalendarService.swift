@@ -1,42 +1,94 @@
 import Foundation
 
-final class GoogleCalendarService: @unchecked Sendable {
-    private let oauthService: GoogleOAuthService
-    private let session = URLSession.shared
+@MainActor
+final class GoogleCalendarService {
+    typealias RequestExecutor = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
+    private let oauthService: any OAuthAccessTokenProviding
+    private let executeRequest: RequestExecutor
     private let baseURL = "https://www.googleapis.com/calendar/v3"
+    private var rejectedAccessToken: String?
 
     init(oauthService: GoogleOAuthService) {
         self.oauthService = oauthService
+        self.executeRequest = { request in
+            try await URLSession.shared.data(for: request)
+        }
+    }
+
+    init(
+        oauthService: any OAuthAccessTokenProviding,
+        requestExecutor: @escaping RequestExecutor
+    ) {
+        self.oauthService = oauthService
+        self.executeRequest = requestExecutor
     }
 
     func fetchUpcomingEvents() async throws -> [CalendarEvent] {
-        try await oauthService.refreshTokenIfNeeded()
-
-        guard let accessToken = await oauthService.accessToken else {
-            throw OAuthError.notAuthenticated
-        }
-
+        let accessToken = try await oauthService.freshAccessToken(forceRefresh: false)
         let now = Date()
 
-        return try await fetchEvents(
-            calendarID: "primary",
-            accessToken: accessToken,
-            timeMin: now
-        )
-        .filter { event in
-            guard event.canTriggerAlert, let startDate = event.startDate else {
-                return false
+        do {
+            let events = try await fetchEvents(
+                calendarID: "primary",
+                accessToken: accessToken,
+                timeMin: now,
+                attempt: "initial"
+            )
+            rejectedAccessToken = nil
+            return upcomingEvents(from: events, after: now)
+        } catch let error as CalendarServiceError where error.isUnauthorized {
+            guard rejectedAccessToken != accessToken.value else {
+                AppLogger.error(
+                    "calendar.auth",
+                    "Google Calendar still rejects the access token obtained by the last forced refresh; " +
+                        "keeping the renewable OAuth session and waiting for a later retry"
+                )
+                throw error
             }
 
-            return startDate > now
+            AppLogger.info(
+                "calendar.auth",
+                "Google Calendar rejected an access token; forcing one refresh and retry " +
+                    tokenTiming(accessToken, at: Date())
+            )
+
+            let refreshedToken = try await oauthService.freshAccessToken(forceRefresh: true)
+
+            do {
+                let events = try await fetchEvents(
+                    calendarID: "primary",
+                    accessToken: refreshedToken,
+                    timeMin: now,
+                    attempt: "after-forced-refresh"
+                )
+                rejectedAccessToken = nil
+                AppLogger.info(
+                    "calendar.auth",
+                    "Calendar access recovered after forced access-token refresh " +
+                        "tokenChanged=\(refreshedToken.value != accessToken.value) " +
+                        tokenTiming(refreshedToken, at: Date())
+                )
+                return upcomingEvents(from: events, after: now)
+            } catch let retryError as CalendarServiceError where retryError.isUnauthorized {
+                rejectedAccessToken = refreshedToken.value
+                AppLogger.error(
+                    "calendar.auth",
+                    "Google Calendar rejected the forced-refresh access token; " +
+                        "keeping the renewable OAuth session instead of disconnecting " +
+                        "tokenChanged=\(refreshedToken.value != accessToken.value) " +
+                        tokenTiming(refreshedToken, at: Date())
+                )
+                throw retryError
+            }
         }
-        .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
     }
 
     private func fetchEvents(
         calendarID: String,
-        accessToken: String,
-        timeMin: Date
+        accessToken: OAuthAccessToken,
+        timeMin: Date,
+        attempt: String
     ) async throws -> [CalendarEvent] {
         let encodedID = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
 
@@ -49,10 +101,19 @@ final class GoogleCalendarService: @unchecked Sendable {
         ]
 
         var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(accessToken.value)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: request)
-        try validateGoogleResponse(data: data, response: response, context: "events for \(calendarID)")
+        let requestStartedAt = Date()
+        let (data, response) = try await executeRequest(request)
+        try validateGoogleResponse(
+            data: data,
+            response: response,
+            context: "events for \(calendarID)",
+            attempt: attempt,
+            requestStartedAt: requestStartedAt,
+            accessToken: accessToken
+        )
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -82,7 +143,14 @@ final class GoogleCalendarService: @unchecked Sendable {
         return result.items ?? []
     }
 
-    private func validateGoogleResponse(data: Data, response: URLResponse, context: String) throws {
+    private func validateGoogleResponse(
+        data: Data,
+        response: URLResponse,
+        context: String,
+        attempt: String,
+        requestStartedAt: Date,
+        accessToken: OAuthAccessToken
+    ) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             AppLogger.error("calendar.api", "Received a non-HTTP response while fetching \(context)")
             throw CalendarServiceError.fetchFailed
@@ -90,9 +158,16 @@ final class GoogleCalendarService: @unchecked Sendable {
 
         guard httpResponse.statusCode == 200 else {
             let message = parseErrorMessage(from: data)
+            let durationMilliseconds = Int(Date().timeIntervalSince(requestStartedAt) * 1_000)
+            let requestStarted = ISO8601DateFormatter().string(from: requestStartedAt)
+            let authenticateHeader = httpResponse.value(forHTTPHeaderField: "WWW-Authenticate") ?? "none"
             AppLogger.error(
                 "calendar.api",
-                "Request failed context=\(context) status=\(httpResponse.statusCode) response=\(message)"
+                "Request failed context=\(context) attempt=\(attempt) " +
+                    "status=\(httpResponse.statusCode) requestStartedAt=\(requestStarted) " +
+                    "durationMs=\(durationMilliseconds) " +
+                    "wwwAuthenticate=\(authenticateHeader) " +
+                    "\(tokenTiming(accessToken, at: requestStartedAt)) response=\(message)"
             )
 
             switch httpResponse.statusCode {
@@ -104,6 +179,28 @@ final class GoogleCalendarService: @unchecked Sendable {
                 throw CalendarServiceError.requestFailed(statusCode: httpResponse.statusCode, message: message)
             }
         }
+    }
+
+    private func upcomingEvents(from events: [CalendarEvent], after now: Date) -> [CalendarEvent] {
+        events
+            .filter { event in
+                guard event.canTriggerAlert, let startDate = event.startDate else {
+                    return false
+                }
+
+                return startDate > now
+            }
+            .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+    }
+
+    private func tokenTiming(_ accessToken: OAuthAccessToken, at date: Date) -> String {
+        guard let expirationDate = accessToken.expirationDate else {
+            return "accessTokenExpiresAt=unknown secondsUntilExpiration=unknown"
+        }
+
+        let expiration = ISO8601DateFormatter().string(from: expirationDate)
+        let secondsUntilExpiration = Int(expirationDate.timeIntervalSince(date).rounded())
+        return "accessTokenExpiresAt=\(expiration) secondsUntilExpiration=\(secondsUntilExpiration)"
     }
 
     private func parseErrorMessage(from data: Data) -> String {
@@ -127,6 +224,13 @@ enum CalendarServiceError: LocalizedError {
     case unauthorized(message: String)
     case forbidden(message: String)
     case requestFailed(statusCode: Int, message: String)
+
+    var isUnauthorized: Bool {
+        if case .unauthorized = self {
+            return true
+        }
+        return false
+    }
 
     var errorDescription: String? {
         switch self {

@@ -11,6 +11,7 @@ final class EventMonitorService {
     private var minutesBefore: Int = 5
     private var onEventsUpdated: (([CalendarEvent]) -> Void)?
     private var onFetchFailed: ((Error) -> Void)?
+    private var fetchInProgress = false
 
     func start(
         calendarService: GoogleCalendarService,
@@ -46,7 +47,9 @@ final class EventMonitorService {
     }
 
     private func fetchAndProcess() async {
-        guard let calendarService else { return }
+        guard let calendarService, !fetchInProgress else { return }
+        fetchInProgress = true
+        defer { fetchInProgress = false }
 
         do {
             let events = try await calendarService.fetchUpcomingEvents()

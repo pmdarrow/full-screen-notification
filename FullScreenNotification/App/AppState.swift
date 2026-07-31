@@ -130,7 +130,7 @@ final class AppState: ObservableObject {
         upcomingEvents = []
         authIssue = AppIssue.from(error)
 
-        guard requiresReauthentication(after: error) else {
+        guard Self.requiresReauthentication(after: error) else {
             return
         }
 
@@ -141,7 +141,7 @@ final class AppState: ObservableObject {
         eventMonitor.stop()
     }
 
-    private func requiresReauthentication(after error: Error) -> Bool {
+    static func requiresReauthentication(after error: Error) -> Bool {
         if let oauthError = error as? OAuthError {
             switch oauthError {
             case .notAuthenticated, .calendarPermissionNotGranted, .offlineAccessNotGranted, .sessionExpired:
@@ -149,10 +149,6 @@ final class AppState: ObservableObject {
             case .canceled, .sdkError:
                 return false
             }
-        }
-
-        if case .unauthorized = error as? CalendarServiceError {
-            return true
         }
 
         return false
@@ -256,8 +252,8 @@ struct AppIssue {
             )
         case .unauthorized(let message):
             return AppIssue(
-                title: "Sign In Required",
-                message: "Your Google Calendar session expired. Sign in again.",
+                title: "Calendar Authorization Error",
+                message: "Google rejected an access token. The app is still connected and will keep trying.",
                 detail: message
             )
         case .forbidden(let message):
