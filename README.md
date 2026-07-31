@@ -5,6 +5,8 @@ A macOS menu bar app that monitors timed events on your primary Google Calendar 
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange)
 
+![Sample full-screen notification](docs/sample-notification.jpg)
+
 ## Overview
 
 - **Full-screen alerts** — a frosted overlay with event details and a live countdown
